@@ -60,15 +60,13 @@ clean_ot <- raw_ot %>%
          BASE = if_else(BASE == "HAL", "HNL", BASE),
          RESERVE_POSITION = if_else(RESERVE_POSITION == "RO", "FO", RESERVE_POSITION)) %>% 
   group_by(PAIRING_NO, PAIRING_DATE, RESERVE_POSITION, BASE) %>% 
-  filter(updated_dt == max(updated_dt),
+  filter(#updated_dt == max(updated_dt),
          ORIGIN == "M") %>% 
   ungroup() %>%
-  filter(is.na(PAIRING_ASSIGNMENT_CODE) | REMOVE_CODE == "TSD" | REMOVE_CODE == "TSU") %>% 
+  filter(PAIRING_ASSIGNMENT_CODE == "TSA" & REMOVE_CODE == "TSD") %>% 
   group_by(PAIRING_DATE, RESERVE_POSITION, BASE) %>% 
   reframe(n = n())
   
-
-
 
 ```
 
