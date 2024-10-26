@@ -70,3 +70,20 @@ clean_ot <- raw_ot %>%
 
 ```
 
+```{r}
+t <- raw_ot %>% 
+  filter(PAIRING_DATE >= "2024-11-01",
+         RESERVE_POSITION == "CA") %>% 
+  mutate(flag = case_when(PAIRING_NO == "H8800" & PAIRING_DATE == "2024-11-02" ~ 1,
+                          PAIRING_NO == "C2801" & PAIRING_DATE == "2024-11-02" ~ 1,
+                          PAIRING_NO == "I7804A" & PAIRING_DATE == "2024-11-02" ~ 1,
+                          PAIRING_NO == "H1855" & PAIRING_DATE == "2024-11-02" ~ 1,
+                          PAIRING_NO == "H3834" & PAIRING_DATE == "2024-11-02" ~ 1,
+                          PAIRING_NO == "H3077" & PAIRING_DATE == "2024-11-02" ~ 1,
+                          PAIRING_NO == "H3040" & PAIRING_DATE == "2024-11-02" ~ 1)) %>% 
+  filter(flag == 1) %>% 
+  mutate(updated_dt = paste(UPDATE_DATE, UPDATE_TIME, sep = " "))
+
+
+```
+
