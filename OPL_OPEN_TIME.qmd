@@ -24,7 +24,7 @@ date <- Sys.Date()
 
 ```{r}
 tryCatch({
-  db_connection <- DBI::dbConnect(odbc::odbc(),  # Establish a database connection using ODBC for the playground database
+  db_connection_pg <- DBI::dbConnect(odbc::odbc(),  # Establish a database connection using ODBC for the playground database
                                      Driver = "SnowflakeDSIIDriver",  # Specify the Snowflake ODBC driver
                                      Server = "hawaiianair.west-us-2.azure.snowflakecomputing.com",  # Server address
                                      WAREHOUSE = "DATA_LAKE_READER",  # Specify the Snowflake warehouse
@@ -37,14 +37,14 @@ tryCatch({
 })
 
 # Set schema and retrieve data from `AA_FINAL_PAIRING` table
-dbExecute(db_connection, "USE SCHEMA CREW_ANALYTICS") 
+dbExecute(db_connection_pg, "USE SCHEMA CREW_ANALYTICS") 
 
 ```
 
 ```{r}
 fp_q <- paste("select * from AA_FINAL_PAIRING where FLIGHT_DATE >'", date,"';")
 
-raw_fp <- dbGetQuery(db_connection, fp_q)
+raw_fp <- dbGetQuery(db_connection_pg, fp_q)
 
 
 ```
@@ -55,16 +55,22 @@ raw_fp <- dbGetQuery(db_connection, fp_q)
 
 
 ot_pilot_pairings <- raw_fp %>% 
-  filter(!DEPARTING_CITY %in% c("BOS", "AUS", "HND", "KIX", "NRT", "ICN", "FUK", "SYD",
-                              "AKL", "JFK", "CRK"),
+  select(c(1:11)) %>% 
+  filter(!DEPARTING_CITY %in% c("BOS", "AUS", "HND", "KIX", "NRT", "ICN", "FUK", "SYD", "AKL", "JFK", "CRK"),
          PAIRING_POSITION %in% c("CA", "FO")) %>% 
+  mutate(n = 0) %>% 
   group_by(FLIGHT_DATE, FLIGHT_NO, DEPARTING_CITY, ARRIVAL_CITY, SCHED_DEPARTURE_TIME, SCHED_ARRIVAL_TIME) %>% 
-    complete(
+  complete(
     PAIRING_POSITION = c("CA", "FO"), 
     fill = list(n = 1)
   ) %>% 
   distinct() %>% 
-  pivot_wider(names_from = PAIRING_POSITION, values_from = n)
+  pivot_wider(names_from = PAIRING_POSITION, values_from = n) %>% 
+  fill(CA, FO, PAIRING_NO, PAIRING_DATE, SCHED_DEPARTURE_DATE, SCHED_ARRIVAL_DATE, .direction = "downup") %>%  # fill down within each group
+  filter(CA == 1 | FO == 1) %>% 
+  distinct()
+  
+
   
   ### OLD
   
@@ -112,7 +118,8 @@ ot_ro_pairings <- raw_fp %>%
     fill = list(n = 1)
   ) %>% 
   distinct() %>% 
-  pivot_wider(names_from = PAIRING_POSITION, values_from = n)
+  pivot_wider(names_from = PAIRING_POSITION, values_from = n) %>% 
+  filter(RO == 1)
 
   ### OLD
 
@@ -146,4 +153,77 @@ ot_fa_pairings <- raw_fp %>%
           EQUIPMENT = EQUIPMENT)
 
 ```
+
+
+#### OLD
+## Packages
+```{r}
+
+if (!require(librarian)){
+  install.packages("librarian")
+  library(librarian)
+}
+
+# librarian downloads, if not already downloaded, and reads in needed packages
+librarian::shelf(tidyverse, here, DBI, odbc)
+
+
+
+```
+
+
+
+```{r}
+tryCatch({
+  db_connection <- DBI::dbConnect(odbc::odbc(),  # Establish a database connection using ODBC for the playground database
+                                     Driver = "SnowflakeDSIIDriver",  # Specify the Snowflake ODBC driver
+                                     Server = "hawaiianair.west-us-2.azure.snowflakecomputing.com",  # Server address
+                                     WAREHOUSE = "DATA_LAKE_READER",  # Specify the Snowflake warehouse
+                                     Database = "ENTERPRISE",  # Specify the database name
+                                     UID = "jacob.eisaguirre@hawaiianair.com",  # User ID for authentication
+                                     authenticator = "externalbrowser")  # Use external browser for authentication
+  print("Database Connected!")  # Print success message if connection is established
+}, error = function(cond) {
+  print("Unable to connect to Database.")  # Print error message if connection fails
+})
+
+# Set schema and retrieve data from `AA_FINAL_PAIRING` table
+dbExecute(db_connection, "USE SCHEMA CREW_ANALYTICS") 
+
+```
+
+```{r}
+ot_q <- "select * from CT_OPEN_TIME where PAIRING_DATE BETWEEN '2024-11-01' AND '2024-11-30';"
+
+raw_ot <- dbGetQuery(db_connection, ot_q)
+
+
+```
+
+
+```{r}
+
+
+clean_ot <- raw_ot %>% 
+  filter(CREW_INDICATOR == "P") %>% 
+  mutate(updated_dt = paste(UPDATE_DATE, UPDATE_TIME, sep = " ")) %>% 
+  mutate(RESERVE_POSITION = ifelse(RESERVE_POSITION %in% c("CA", "FO", "RO", "FA"),
+                                   RESERVE_POSITION, 
+                                   "FA"),
+         BASE = if_else(BASE == "HAL", "HNL", BASE),
+        ) %>% 
+  group_by(PAIRING_NO, PAIRING_DATE, RESERVE_POSITION) %>% 
+  filter(updated_dt == max(updated_dt),
+         ORIGIN == "M",
+         is.na(PAIRING_ASSIGNMENT_CODE)) %>% 
+  rename(PAIRING_POSITION = RESERVE_POSITION) %>% 
+  select(CREW_INDICATOR, PAIRING_NO, PAIRING_DATE, BASE, PAIRING_POSITION)%>%
+  mutate(n=1) %>% 
+  pivot_wider(names_from = PAIRING_POSITION, values_from = n) %>% 
+  mutate(across(c("CA", "FO"), ~ if_else(is.na(.), 0, .)))
+
+
+
+```
+
 
